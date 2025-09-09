@@ -3,6 +3,7 @@ const multer = require('multer');
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
+const progress = require('progress-stream'); 
 require('dotenv').config();
 
 const app = express();
@@ -149,73 +150,111 @@ app.get('/auth/status', (req, res) => {
   });
 });
 
-// Upload single file (requires authentication)
+// In-memory progress store
+const uploadProgressMap = {};
+
+// Helper to generate unique upload IDs
+function generateUploadId() {
+  return 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Upgrade /upload endpoint for progress tracking
 app.post('/upload', upload.single('file'), async (req, res) => {
-  try {
-    if (!isAuthenticated()) {
-      return res.status(401).json({
-        success: false,
-        error: 'Not authenticated. Please visit /auth to authorize first.'
-      });
-    }
-    
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        error: 'No file provided'
-      });
-    }
-    
-    const filePath = req.file.path;
-    const fileName = req.file.originalname;
-    const mimeType = req.file.mimetype;
-    
-    console.log(`Uploading file: ${fileName} (${mimeType})`);
-    
-    const driveFile = await uploadToGoogleDriveOAuth(
-      filePath, 
-      fileName, 
-      mimeType, 
-      process.env.GOOGLE_DRIVE_FOLDER_ID
-    );
-    
-    // Clean up temporary file
-    fs.unlinkSync(filePath);
-    
-    res.json({
-      success: true,
-      message: 'File uploaded successfully',
-      file: {
-        id: driveFile.id,
-        name: driveFile.name,
-        viewLink: driveFile.webViewLink,
-        downloadLink: driveFile.webContentLink
-      }
-    });
-    
-  } catch (error) {
-    console.error('Upload error:', error);
-    
-    // Clean up temporary file on error
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    
-    // Handle token refresh errors
-    if (error.code === 401 || error.message.includes('invalid_grant')) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication expired. Please re-authorize using /auth endpoint.',
-        needsReauth: true
-      });
-    }
-    
-    res.status(500).json({
+  if (!isAuthenticated()) {
+    return res.status(401).json({
       success: false,
-      error: 'Failed to upload file to Google Drive',
-      details: error.message
+      error: 'Not authenticated. Please visit /auth to authorize first.'
     });
   }
+
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      error: 'No file provided'
+    });
+  }
+
+  const uploadId = generateUploadId();
+  uploadProgressMap[uploadId] = { progress: 0, status: 'pending' };
+
+  // Respond immediately with uploadId
+  res.json({
+    success: true,
+    uploadId,
+    status: 'pending',
+    progress: 0,
+    message: 'Upload started. Poll /upload/progress/' + uploadId + ' for progress.'
+  });
+
+  // Start upload in background
+  (async () => {
+    try {
+      uploadProgressMap[uploadId].status = 'in_progress';
+
+      const filePath = req.file.path;
+      const fileName = req.file.originalname;
+      const mimeType = req.file.mimetype;
+      const fileSize = req.file.size;
+
+      // Create a progress stream
+      const progStream = progress({ length: fileSize, time: 100 });
+      progStream.on('progress', function(p) {
+        uploadProgressMap[uploadId].progress = Math.round(p.percentage);
+      });
+
+      const driveFile = await drive.files.create({
+        resource: {
+          name: fileName,
+          ...(process.env.GOOGLE_DRIVE_FOLDER_ID && { parents: [process.env.GOOGLE_DRIVE_FOLDER_ID] })
+        },
+        media: {
+          mimeType: mimeType,
+          body: fs.createReadStream(filePath).pipe(progStream)
+        },
+        fields: 'id,name,webViewLink,webContentLink'
+      });
+
+      fs.unlinkSync(filePath);
+
+      uploadProgressMap[uploadId] = {
+        status: 'done',
+        progress: 100,
+        file: {
+          id: driveFile.data.id,
+          name: driveFile.data.name,
+          viewLink: driveFile.data.webViewLink,
+          downloadLink: driveFile.data.webContentLink
+        }
+      };
+    } catch (error) {
+      // Clean up temporary file on error
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      uploadProgressMap[uploadId] = {
+        status: 'error',
+        progress: uploadProgressMap[uploadId].progress || 0,
+        error: error.message
+      };
+    }
+  })();
+});
+
+// Endpoint to poll upload progress
+app.get('/upload/progress/:uploadId', (req, res) => {
+  const { uploadId } = req.params;
+  const status = uploadProgressMap[uploadId];
+  if (!status) {
+    return res.status(404).json({
+      success: false,
+      error: 'Upload ID not found'
+    });
+  }
+  res.json({
+    success: true,
+    uploadId,
+    ...status
+  });
 });
 
 // Upload multiple files
