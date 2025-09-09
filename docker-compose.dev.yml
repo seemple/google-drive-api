@@ -12,7 +12,8 @@ services:
     env_file:
       - .env.development
     environment:
-      - CHOKIDAR_USEPOLLING=true      
+      - CHOKIDAR_USEPOLLING=true
+      - HEALTHCHECK_URL=http://localhost:3000/health
     volumes:
       # Mount source code for hot reload (development only)
       - ./server.js:/app/server.js:ro
@@ -27,8 +28,8 @@ services:
       - google-drive-network-dev
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
-      interval: 10s  # Faster health checks in dev
-      timeout: 5s
+      interval: 15m  # Faster health checks in dev
+      timeout: 30s
       retries: 3
       start_period: 10s
     command: ["npm", "run", "dev"]  # Use nodemon in development

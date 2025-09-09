@@ -34,9 +34,12 @@ USER nodeuser
 # Expose port
 EXPOSE 3000
 
+# Set default HEALTHCHECK_URL (can be overridden by docker-compose)
+ENV HEALTHCHECK_URL=http://localhost:3000/health
+
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=15m --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f $HEALTHCHECK_URL || exit 1
 
 # Start the application
 CMD ["npm", "start"]
