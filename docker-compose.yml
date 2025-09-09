@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  google-drive-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: google-drive-upload-api
+    restart: unless-stopped
+    ports:
+      - "3010:3000"
+    env_file:
+      - .env.production
+    volumes:
+      # Mount your Google Service Account credentials (for service account method)
+      - ./credentials:/app/credentials:ro
+      # Mount uploads directory for temporary files with proper permissions
+      - uploads-volume:/app/uploads
+    networks:
+      - google-drive-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-3000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on: []
+
+networks:
+  google-drive-network:
+    driver: bridge
+
+volumes:
+  uploads-volume:
+    driver: local

@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  google-drive-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: google-drive-upload-api-dev
+    restart: "no"  # Don't restart in development
+    ports:
+      - "3010:3000"
+    env_file:
+      - .env.development
+    environment:
+      - CHOKIDAR_USEPOLLING=true      
+    volumes:
+      # Mount source code for hot reload (development only)
+      - ./server.js:/app/server.js:ro
+      - ./package.json:/app/package.json:ro
+      # Mount credentials
+      - ./credentials:/app/credentials:ro
+      # Mount uploads directory
+      - ./uploads:/app/uploads
+      # Mount logs directory
+      - ./logs:/app/logs
+    networks:
+      - google-drive-network-dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3010/health"]
+      interval: 10s  # Faster health checks in dev
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    command: ["npm", "run", "dev"]  # Use nodemon in development
+
+  # Optional: Add a database for logging/metadata (development)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: google-drive-api-db-dev
+  #   restart: "no"
+  #   environment:
+  #     - POSTGRES_DB=${DB_NAME:-drive_api}
+  #     - POSTGRES_USER=${DB_USER:-postgres}
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD:-password}
+  #   ports:
+  #     - "${DB_PORT:-5432}:5432"
+  #   volumes:
+  #     - postgres-data-dev:/var/lib/postgresql/data
+  #   networks:
+  #     - google-drive-network-dev
+
+  # Optional: Redis for caching/session management (development)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: google-drive-api-redis-dev
+  #   restart: "no"
+  #   ports:
+  #     - "${REDIS_PORT:-6379}:6379"
+  #   networks:
+  #     - google-drive-network-dev
+
+networks:
+  google-drive-network-dev:
+    driver: bridge
+
+volumes:
+  postgres-data-dev:
+    driver: local
+  uploads-volume-dev:
+    driver: local

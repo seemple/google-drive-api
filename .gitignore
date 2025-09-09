@@ -1,0 +1,43 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+build/
+coverage/
+
+# Docker
+*.pid
+*.seed
+*.sqlite
+docker-compose.override.yml
+
+# Uploaded files
+uploads/
+uploads-volume/
+uploads-volume-dev/
+
+# Credentials
+credentials/
+*.pem
+*.key
+*.crt
+
+# Misc
+.idea/
+.vscode/
