@@ -4,6 +4,7 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 const progress = require('progress-stream'); 
+const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
@@ -11,6 +12,14 @@ const port = process.env.PORT || 3000;
 const base_url = process.env.BASE_URL || "http://localhost:" + port;
 
 // Middleware
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : null;
+
+const corsOptions = {
+  origin: allowedOrigins
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.static('public')); // For serving OAuth callback page
 
